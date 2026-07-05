@@ -25,6 +25,13 @@ fi
 export HYPRWHSPR_ROOT="$PACKAGE_ROOT"
 export PYTHONPATH="$LIB_DIR:$PYTHONPATH"
 
+if [[ -n "$HYPRWHSPR_NIX_PYTHON" ]]; then
+    # Nix package build: a single Python (with every backend/dependency this
+    # package bundles already installed) is baked in at wrap time, so there's
+    # no system Python to hunt for and no self-managed venv to fall back to.
+    CLI_PYTHON="$HYPRWHSPR_NIX_PYTHON"
+    PYTHON_CMD="$HYPRWHSPR_NIX_PYTHON"
+else
 # Find system Python, avoiding mise/pyenv/asdf/homebrew managed versions
 # CLI commands use system Python since deps are installed via package manager
 get_system_python() {
@@ -60,6 +67,7 @@ if [ -f "$VENV_PYTHON" ]; then
 else
     # Fallback to system Python if venv doesn't exist
     PYTHON_CMD="$CLI_PYTHON"
+fi
 fi
 
 # Help/version handling: route -h/--help/--version to CLI

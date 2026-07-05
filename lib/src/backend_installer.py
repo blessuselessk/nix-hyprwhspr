@@ -81,6 +81,19 @@ WHEEL_BASE_URL = "https://github.com/goodroot/hyprwhspr/releases/download/wheels
 WHEEL_CACHE_DIR = USER_BASE / 'wheel-cache'
 PYWHISPERCPP_VERSION = "1.5.0"
 
+# Set by the Nix package's launcher when every backend it bundles (pywhispercpp,
+# onnx-asr) and the cloud-backend dependencies are already installed into the
+# interpreter running this code. In that mode there is no venv to create and no
+# wheel/pip installation to perform - see install_backend() and
+# setup_python_venv() below.
+NIX_MANAGED = os.environ.get('HYPRWHSPR_NIX_MANAGED') == '1'
+
+# backend_type -> importable module, for the backends the Nix package provides.
+NIX_MANAGED_BACKENDS = {
+    'cpu': 'pywhispercpp',
+    'onnx-asr': 'onnx_asr',
+}
+
 
 def _safe_decode(output) -> str:
     """Safely decode output from run_command which may be string or bytes."""
@@ -1112,6 +1125,16 @@ def setup_python_venv(force_rebuild: bool = False, custom_python: Optional[str] 
         custom_python: Optional path to Python executable to use for venv creation.
                        If None, auto-detects a compatible Python (3.14 or earlier).
     """
+    if NIX_MANAGED:
+        # All base + cloud-backend dependencies (sounddevice, numpy, requests,
+        # websocket-client, elevenlabs, ...) are already installed into this
+        # interpreter by the Nix package. Callers use the returned path as a
+        # pip binary to install/verify packages; point them at a shim that
+        # treats every "install" as a no-op instead of trying (and failing) to
+        # write into the read-only Nix store.
+        log_success("Using the Nix-provided Python environment - no venv needed.")
+        return Path(os.environ.get('HYPRWHSPR_NIX_PIP_SHIM', sys.executable))
+
     log_info("Setting up Python virtual environment…")
 
     # Validate requirements.txt exists
@@ -2151,6 +2174,39 @@ def _parallel_setup_gpu_and_venv(backend_type: str, force_rebuild: bool = False,
 
 # ==================== Main Installation Function ====================
 
+def _install_backend_nix_managed(backend_type: str) -> bool:
+    """
+    install_backend() replacement used when running from the Nix package.
+
+    The flake bakes pywhispercpp (CPU) and onnx-asr straight into the
+    interpreter this code runs under, so "installing" them is just confirming
+    they're importable. There's no venv to build, no wheels to fetch, and no
+    GPU acceleration variant to compile - the Nix package is CPU-only.
+    """
+    module = NIX_MANAGED_BACKENDS.get(backend_type)
+    if module is None:
+        supported = ", ".join(sorted(NIX_MANAGED_BACKENDS))
+        log_error(
+            f"The Nix package doesn't bundle the '{backend_type}' backend "
+            f"(supported here: {supported}, plus the cloud backends: "
+            "rest-api, realtime-ws, elevenlabs-realtime)."
+        )
+        log_info("Pick one of those with: hyprwhspr config edit")
+        set_install_state('failed', f"backend '{backend_type}' not bundled in Nix package")
+        return False
+
+    try:
+        __import__(module)
+    except ImportError as e:
+        log_error(f"Expected '{module}' to be preinstalled by the Nix package, but it failed to import: {e}")
+        set_install_state('failed', str(e))
+        return False
+
+    log_success(f"{backend_type} backend is already provided by the Nix package - nothing to install.")
+    set_install_state('completed')
+    return True
+
+
 def install_backend(backend_type: str, cleanup_on_failure: bool = True, force_rebuild: bool = False,
                     custom_python: Optional[str] = None) -> bool:
     """
@@ -2170,6 +2226,9 @@ def install_backend(backend_type: str, cleanup_on_failure: bool = True, force_re
     set_install_state('in_progress')
 
     log_info(f"Installing {backend_type.upper()} backend...")
+
+    if NIX_MANAGED:
+        return _install_backend_nix_managed(backend_type)
 
     # Check for MISE interference
     if _check_mise_active():

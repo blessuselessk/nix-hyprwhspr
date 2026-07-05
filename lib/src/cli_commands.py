@@ -373,6 +373,19 @@ def _check_ydotool_version() -> tuple[bool, str, str]:
         except Exception:
             pass
 
+    # Nix/NixOS: no dpkg/pacman/rpm, and this build of ydotoold prints
+    # "unknown" for --version (no version string gets embedded at build
+    # time). The store path itself carries the version, e.g.
+    # /nix/store/<hash>-ydotool-1.0.4/bin/ydotool.
+    if not version:
+        try:
+            resolved = Path(os.path.realpath(shutil.which('ydotool')))
+            match = re.search(r'-ydotool-(\d+\.\d+\.?\d*)(?:[/-]|$)', str(resolved))
+            if match:
+                version = match.group(1)
+        except Exception:
+            pass
+
     # If still no version, assume old
     if not version:
         version = "0.1.0"
