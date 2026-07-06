@@ -36,9 +36,12 @@
           # Local Whisper backend
           pywhispercpp
 
-          # Local Parakeet TDT backend (CPU-optimized ONNX)
+          # Local Parakeet TDT backend (CPU-optimized ONNX). huggingface-hub
+          # is onnx-asr's "hub" extra - without it, onnx_asr.load_model()
+          # can't fetch models and the backend fails at startup.
           onnx-asr
           onnxruntime
+          huggingface-hub
 
           # Cloud backends: REST API / realtime WebSocket / ElevenLabs
           requests
