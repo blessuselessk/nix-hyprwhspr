@@ -131,6 +131,65 @@ hyprwhspr status
 
 > Non-Arch distro support is new - please report any snags!
 
+### Nix / NixOS
+
+This repo is also a flake, packaging hyprwhspr's CLI + dictation daemon with
+its local Whisper (`pywhispercpp`, built from source) and local Parakeet
+(`onnx-asr`) backends, plus the cloud backends (REST API, realtime WebSocket,
+ElevenLabs), preinstalled into a wrapped Python environment - no
+`hyprwhspr setup` pip/venv step required for those.
+
+```bash
+# Try it without installing anything
+nix run github:blessuselessk/nix-hyprwhspr -- --help
+
+# Or drop into a dev shell with everything on PATH
+nix develop github:blessuselessk/nix-hyprwhspr
+```
+
+For a persistent install, add it as a flake input:
+
+```nix
+inputs.nix-hyprwhspr.url = "github:blessuselessk/nix-hyprwhspr";
+```
+
+**Home Manager** (`homeManagerModules.default`) installs the package and
+manages the `hyprwhspr.service` systemd user unit:
+
+```nix
+services.hyprwhspr = {
+  enable = true;
+  package = inputs.nix-hyprwhspr.packages.${pkgs.system}.default;
+  settings = {
+    backend = "pywhispercpp";  # or "onnx-asr", "rest-api", "realtime-ws"
+    model = "base.en";
+  };
+};
+```
+
+**NixOS** (`nixosModules.default`) grants the `uinput`/`input` group access
+hyprwhspr's evdev-based hotkeys and text injection need (this is system-level,
+so it can't live in the home-manager module):
+
+```nix
+programs.hyprwhspr = {
+  enable = true;
+  users = [ "yourusername" ];
+};
+```
+
+Notes:
+
+- Backends not bundled by the flake (faster-whisper, cohere-transcribe, and
+  NVIDIA/AMD/Vulkan-accelerated pywhispercpp - it's CPU-only) fail clearly if
+  selected, rather than trying to `pip install` into the read-only Nix store.
+- Waybar/Noctalia bar integration and Hyprland keybinds are one-shot,
+  interactive wizards (`hyprwhspr waybar`, `hyprwhspr noctalia`) left for you
+  to run once after activation, since they write into files Home Manager
+  doesn't otherwise manage.
+- See `nix/home-manager-module.nix` and `nix/nixos-module.nix` for the full
+  set of options.
+
 ### CLI commands
 
 After installation, use the `hyprwhspr` CLI to manage your installation:
