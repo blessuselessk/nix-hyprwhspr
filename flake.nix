@@ -16,6 +16,19 @@
 
         pywhispercpp = pkgs.python3.pkgs.callPackage ./nix/pywhispercpp.nix { };
 
+        # nixpkgs' onnxruntime builds with OpenVINO's execution provider by
+        # default (openvinoSupport = stdenv.isLinux). onnx_asr auto-selects
+        # whatever provider onnxruntime reports first, and OpenVINO's CPU
+        # plugin can't run the parakeet-tdt-0.6b-v3 graph (dynamic-rank
+        # "image" parameter): "Check '!shape.rank().is_dynamic()' failed".
+        # PyPI's onnxruntime (what onnx-asr is actually developed/tested
+        # against) has no OpenVINO EP at all, so disabling it here just
+        # matches upstream's real target rather than adding a workaround.
+        onnxruntimeCpu = pkgs.python3.pkgs.onnxruntime.override {
+          onnxruntime = pkgs.onnxruntime.override { openvinoSupport = false; };
+        };
+        onnxAsrCpu = pkgs.python3.pkgs.onnx-asr.override { onnxruntime = onnxruntimeCpu; };
+
         # Everything hyprwhspr's local backends (pywhispercpp, onnx-asr) and
         # cloud backends (rest-api, realtime-ws, elevenlabs-realtime) import,
         # plus the optional mic-osd visualizer's GTK4 bindings. See
@@ -38,9 +51,10 @@
 
           # Local Parakeet TDT backend (CPU-optimized ONNX). huggingface-hub
           # is onnx-asr's "hub" extra - without it, onnx_asr.load_model()
-          # can't fetch models and the backend fails at startup.
-          onnx-asr
-          onnxruntime
+          # can't fetch models and the backend fails at startup. See
+          # onnxAsrCpu/onnxruntimeCpu above for why these are overridden.
+          onnxAsrCpu
+          onnxruntimeCpu
           huggingface-hub
 
           # Cloud backends: REST API / realtime WebSocket / ElevenLabs
