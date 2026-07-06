@@ -69,15 +69,17 @@ jobs:
           ./result/bin/hyprwhspr --version
           ./result/bin/hyprwhspr --help
           ./result/bin/hyprwhspr validate || true
+          # Real end-to-end check that the GTK4/gtk4-layer-shell wiring
+          # (GI_TYPELIB_PATH/LD_LIBRARY_PATH set by wrapProgram) actually
+          # works, via the same code path `hyprwhspr setup` uses.
+          ./result/bin/hyprwhspr mic-osd status | tee /tmp/mic-osd-status.txt
+          grep -q "Dependencies available: Yes" /tmp/mic-osd-status.txt
 
-      - name: Confirm bundled backends import
+      - name: Confirm local/cloud backends import
         run: |
           py="$(nix build .#pythonEnv --no-link --print-out-paths)/bin/python3"
           "$py" -c "
-          import pywhispercpp, onnx_asr, elevenlabs, sounddevice, evdev, websocket, dbus, gi
-          gi.require_version('Gtk', '4.0')
-          gi.require_version('Gtk4LayerShell', '1.0')
-          from gi.repository import Gtk, Gtk4LayerShell
+          import pywhispercpp, onnx_asr, elevenlabs, sounddevice, evdev, websocket, dbus
           print('all bundled backends import cleanly')
           "
 
